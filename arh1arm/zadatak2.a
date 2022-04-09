@@ -1,0 +1,96 @@
+        ; R5 - odbrojava 5 prijenosa podataka
+        ; R0 - DMAC
+        ; R2 - RTC
+        ; R1 - registar koji se koristi za ubacivanje vrijednosti u RTC/DMAC ..
+        ; prilikom pokretanja u SSPARCSS-u spojiti DMAC INTR na IRQ, RTC INTR na FIQ
+
+        ORG 0
+        B MAIN
+
+        ORG 0x18
+        B DMACIRQ
+
+        ORG 0x1C
+        ;B FIQREQ ; nepotreban branch, mozes pisat kod ovdje ispod
+        MOV R1, #0
+        STR R1, [R2, #8] ; STAT/EOI RTC-a na 0
+        STR R1, [R2, #16] ; CR registar RTC-a takoder na 0, privremeno mu onemogucujemo bacanje iznimaka
+        ; omogucujemo DMAC
+        MOV R1, #1
+        STR R1, [R0] ; DMAC control = 1 - omogucen je
+        SUBS PC, LR, #4
+
+EXIT    ; nesto moras jos osim swi
+        SWI 0x123456
+
+MAIN    ; postavljanje DMAC-a i RTC-a, inicijalizacija stogova
+        MOV R5, #0x5 ; 0x nepotreban svejedno je
+        ; ---------- postavi DMAC ----------
+        LDR R0, DMAC ; DMAC adresa u registru R0
+        ; - postavi SrcAddr, DestAddr
+        LDR R1, DATASRC
+        STR R1, [R0, #16] ; SrcAddr
+        LDR R1, DATADST
+        STR R1, [R0, #20] ; DestAddr
+        ; - postavi Sizes
+        LDR R1, SIZES
+        STR R1, [R0, #24]
+        ; - postavi registar Config
+        MOV R1, #0b10101100 ; InterruptEnable=1, TransferWidth=10=word, Source/DestinationIncrement=11=increment both
+        STR R1, [R0, #28]
+        ; ---------- postavi RTC ---------- ; postavi RTC-ov CR na 1 TEK NAKON PRVOG PRIJENOSA! i nakon zadnjeg ga vrati na 0
+        LDR R2, RTC ; RTC adresa u registru R2
+        MOV R1, #3
+        STR R1, [R2, #4] ; u Match Register stavi 3
+        MOV R1, #0
+        STR R1, [R2, #12] ; 0 u brojilo
+        STR R1, [R2, #16] ; neka Control Register bude 0, da RTC ne baca prekide prije prvog prijenosa (reduntandno, 0 je default vrijednost)
+        ; omogući prekide u CPSR
+        MRS R1, CPSR
+        BIC R1, R1, #0b11000000
+        MSR CPSR, R1
+        ; inicijaliziraj stogove
+        MSR CPSR, #0b11010010
+        MOV SP, #0x10000 ; init R13_irq
+        MSR CPSR, #0b11010011
+        MOV SP, #0xF800 ; init R13_svc
+
+        ; tek sad omogucimo DMAC-u bacanje prekida zapisivanjem jedinice u njegov Control registar
+        MOV R1, #1
+        STR R1, [R0]
+
+LOOP    CMP R5, #0
+        MOVEQ R1, #0
+        STREQ R1, [R2, #16]
+        BEQ EXIT
+
+
+DMACIRQ ; obrada irq
+        STMFD SP!, {LR}
+        STR R0, [R0, #4] ; reset status/prihvat DMAC-a
+        LDR R1, LOCKDST
+        LDR R6, LOCKLOC
+        STR R1, [R6] ; nakon sto DMAC prebaci sve podatke zapisi 0x80808080 na kraj tog bloka podataka
+        LDR R1, DATASRC
+        STR R1, [R0, #16] ; SrcAddr
+        LDR R1, DATADST
+        STR R1, [R0, #20] ; DestAddr
+        SUB R5, R5, #1
+        ; tek sad postavim RTC CR na 1
+        MOV R1, #1
+        STR R1, [R2, #16]
+        LDMFD SP!, {LR}
+        SUBS PC, LR, #4   ; povratak, izlazak iz iznimke
+        
+
+DMAC    DW 0x00FF0000 ; spajamo na IRQ
+RTC     DW 0xFFFF0E00 ; spajamo na FIQ
+DATASRC DW 0x500
+DATADST DW 0x700
+SIZES   DW 0x000A ; DMAC Sizes, TS = 10 = 0xA (prenosimo 10 podataka), velicina bloka = 1 -> B = 1 -> BS = 0 (2^0 = 1), Sizes = 0x0000000A
+LOCKDST DW 0x80808080
+LOCKLOC DW 0x728 ; hex lokacija za LOCKDST
+        ORG 0x500
+        DW 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA
+        ORG 0x700
+        DW 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ; redundantno

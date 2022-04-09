@@ -1,0 +1,72 @@
+        ; R0 - adresa GPIO-a
+        ; R1 - registar za privremene vrijednosti koje saljem u RTC/GPIO
+        ; R2 - adresa RTC-a
+        ; R4 - trenutno stanje semafora (1, 2, 3, 4 - crveno, crveno+zuto, zeleno, zuto)
+        ;    - prakticki brojanje u modulu 4
+        
+        ORG 0
+        B MAIN
+        
+        ORG 0x18
+        B PREKID
+
+MAIN    ; postavi GPIO
+        MOV R4, #1          ; inicijalno stanje semafora neka bude 1 (crveno)
+        LDR R0, GPIO        ; GPIO adresa u R0
+        LDR R2, RTC         ; RTC  adresa u R2
+        MOV R1, #0b11100000 ; XPA5/6/7 su izlazni bitovi
+        STR R1, [R0, #0x8]  ; posalje info o smjeru na PA_DDR
+        ; postavi RTC
+        MOV R1, #0
+        STR R1, [R2, #0xC]
+        MOV R1, #5
+        STR R1, [R2, #0x4]
+        MOV R1, #1
+        STR R1, [R2, #0x10]
+        MRS R1, CPSR
+        BIC R1, R1, #0b10000000
+        MSR CPSR, R1
+        ;SWI 0x123456
+        
+LOOP    B LOOP
+
+
+QUITIRQ     ; to-do when you're exiting irq
+        MOV R1, #0
+        STR R1, [R2, #8]
+        STR R1, [R2, #12]
+        SUBS PC, LR, #4
+
+
+PREKID  ; poziva se kad RTC baci IRQ
+        CMP R4, #1
+        BEQ CR
+        CMP R4, #2
+        BEQ CRZT
+        CMP R4, #3
+        BEQ ZL
+        CMP R4, #4
+        BEQ ZT
+    
+CR      MOV R1, #0b00100000
+        STR R1, [R0]
+        ADD R4, R4, #1
+        B QUITIRQ
+ 
+CRZT    MOV R1, #0b01100000
+        STR R1, [R0]
+        ADD R4, R4, #1
+        B QUITIRQ
+
+ZL      MOV R1, #0b10000000
+        STR R1, [R0]
+        ADD R4, R4, #1
+        B QUITIRQ
+
+ZT      MOV R1, #0b01000000
+        STR R1, [R0]
+        MOV R4, #1
+        B QUITIRQ
+
+GPIO    DW 0xFFFF0B00
+RTC     DW 0xFFFF0E00

@@ -1,0 +1,195 @@
+        # s0 - GPIO adresa (LCD)
+        # t1 - registar za privremenu uporabu, koristi se za uspoređivanje brojeva
+        # a1 - registar koji prenosi slova LCD-u preko GPIO-a
+        org 0
+        lw a0,input(x0) # loada ono za input=500 dalje od x0, gdje je broj koji treba pretvoriti
+        lui s0,%hi(0xFFFF0F00) # ove dvije linije
+        addi s0,s0,%lo(0xFFFF0F00) # ucitaju adresu GPIO-a
+        jal ra,PRETVORI # poziv potprograma
+        halt
+
+
+
+PRETVORI # a0 - registar s brojem kojeg treba pretvoriti, prvo odredimo desetice unutar kojih je broj
+        addi t1,x0,100 # ako je broj jednak 100 branchaj na snippet koda koji ispisuje 100
+        beq a0,t1,b100
+        
+        addi t1,x0,90  # 90 <= broj < 100 - onda ispis zapocinjemo brojem 90 odnosno XC pa branch na b90 koji to radi
+        bge a0,t1,b90
+        
+        addi t1,x0,80
+        bge a0,t1,b80
+        
+        addi t1,x0,70
+        bge a0,t1,b70
+        
+        addi t1,x0,60
+        bge a0,t1,b60
+        
+        addi t1,x0,50
+        bge a0,t1,b50
+        
+        addi t1,x0,40
+        bge a0,t1,b40
+        
+        addi t1,x0,30
+        bge a0,t1,b30
+        
+        addi t1,x0,20
+        bge a0,t1,b20
+        
+        addi t1,x0,10
+        bge a0,t1,b10 # tako sve do if broj greater than or equal signed sa deset, ako nismo branchali: broj < 10
+        
+        jal x0,m10 # pa bezuvjetno preskacemo sljedeci dio i idemo do bloka gdje ispisujemo odgovarajuće jedinice (dio < 10)
+
+b100    jal t0,WC
+        jal x0,m10
+
+b90     jal t0,WX # za broj 90 (uzimam ovaj primjer za objasniti) odi na WX pa WC znacenja write X, write C
+        jal t0,WC
+        addi a0,a0,-90 # oduzmi 90 tako da u a0 ostane samo broj jedinica koje jos treba ispisati nakon desetica
+        jal x0,m10 # branchaj (bez spremanja trenutne lokacije u registar jer se ne trebamo vratiti) na ispisivanje jedinica
+        
+b80     jal t0,WL # write L, write X, ..
+        jal t0,WX
+        jal t0,WX
+        jal t0,WX
+        addi a0,a0,-80 # oduzmi 80 .. objasnjeno za 90
+        jal x0,m10
+        
+b70     jal t0,WL
+        jal t0,WX
+        jal t0,WX
+        addi a0,a0,-70
+        jal x0,m10
+
+b60     jal t0,WL
+        jal t0,WX
+        addi a0,a0,-60
+        jal x0,m10
+
+b50     jal t0,WL
+        addi a0,a0,-50
+        jal x0,m10
+
+b40     jal t0,WX
+        jal t0,WL
+        addi a0,a0,-40
+        jal x0,m10
+
+b30     jal t0,WX
+        jal t0,WX
+        jal t0,WX
+        addi a0,a0,-30
+        jal x0,m10
+
+b20     jal t0,WX
+        jal t0,WX
+        addi a0,a0,-20
+        jal x0,m10
+
+b10     jal t0,WX
+        addi a0,a0,-10
+        jal x0,m10
+        
+m10     addi t1,x0,1 # tu pocinju provjere, koliko iznosi dio koji je manji od deset?
+        beq a0,t1,b1 # brancha na ispisivanje tog broja
+        
+        addi t1,x0,2
+        beq a0,t1,b2
+        
+        addi t1,x0,3
+        beq a0,t1,b3
+        
+        addi t1,x0,4
+        beq a0,t1,b4
+        
+        addi t1,x0,5
+        beq a0,t1,b5
+        
+        addi t1,x0,6
+        beq a0,t1,b6
+        
+        addi t1,x0,7
+        beq a0,t1,b7
+        
+        addi t1,x0,8
+        beq a0,t1,b8
+        
+        addi t1,x0,9
+        beq a0,t1,b9
+        
+        jal x0,kraj # ako je a0 nakon oduzimanja desetica jednak 0 ni jedan beq nece branchati, izvrsit ce se ovaj jump na kraj jer je u tom slucaju ispisivanje gotovo
+        
+b1      jal t0,WI # ispisi 1
+        jal x0,kraj # jump na kraj
+        
+b2      jal t0,WI # ispisi 2
+        jal t0,WI
+        jal x0,kraj # jump na kraj
+        
+b3      jal t0,WI # ..
+        jal t0,WI
+        jal t0,WI
+        jal x0,kraj
+        
+b4      jal t0,WI
+        jal t0,WV
+        jal x0,kraj
+        
+b5      jal t0,WV
+        jal x0,kraj
+        
+b6      jal t0,WV
+        jal t0,WI
+        jal x0,kraj
+        
+b7      jal t0,WV
+        jal t0,WI
+        jal t0,WI
+        jal x0,kraj
+        
+b8      jal t0,WV
+        jal t0,WI
+        jal t0,WI
+        jal t0,WI
+        jal x0,kraj
+
+b9      jal t0,WI
+        jal t0,WX
+
+                # u registar preko kojeg saljemo podatke LCD-u stavimo uputu da sve iz buffera prikaze na ekranu
+kraj    addi a1,x0,0xA # tocnije receno, ulazni registri kopiraju se u prikazne registre koji se odmah prikazuju na zaslonu
+        jal t2,ping # jump and link u ping (ping je objasnjen tamo gdje je definiran)
+        jalr x0,0(ra) # povratak u return adress, vracamo se u glavni program, izlazimo iz potprograma PRETVORI
+
+        
+WX      addi a1,x0,0x58 # X - registar a1 koristi se za slanje slova LCD-u, u njega stavimo ASCII vrijednost znaka kojeg ispisujemo
+        jal t2,ping # jump and link na ping
+        jalr x0,0(t0) # vrati se u otkud god je WX pozvan (za return adrese iz W* funkcija koristi se registar t0)
+        
+WC      addi a1,x0,0x43 # C - u a1 ide ASCII vrijednost slova C
+        jal t2,ping
+        jalr x0,0(t0)
+        
+WV      addi a1,x0,0x56 # V - ..
+        jal t2,ping
+        jalr x0,0(t0)
+
+WL      addi a1,x0,0x4c # L
+        jal t2,ping
+        jalr x0,0(t0)
+
+WI      addi a1,x0,0x49 # I
+        jal t2,ping
+        jalr x0,0(t0)
+        
+ping    ori a1,a1,0b10000000 # slovo koje treba ispisati uvijek je u a1, a za slanje na LCD moramo WR (sedmi) bit pingati na 1
+        sb a1,4(s0) # posaljemo slovo s osmim bitom na 1, oznacavajuci da je podatak na DATA (bitovi 0-6) valjan
+        andi a1,a1,0b01111111 # vratimo sedmi bit na nulu
+        sb a1,4(s0) # LCD je trebao zapisati podatak u meduvremenu, i LCD sad ceka sljedeci signal 'data je valjan' na 7. bitu
+        jalr x0,0(t2) # vrati se u otkud god je ping pozvan (za return adrese iz ping koristi se registar t2)
+
+        org 0x500
+input   dw 89

@@ -1,0 +1,80 @@
+                ORG 0
+                MOV R0, #0x500 ; s 0x500 se citaju podaci
+                MOV R5, #0x1000 ; u 0x1000 idu rezultati
+                LDR R6, ENDINPUT ; u R6 ucitam broj koji oznacava kraj inputa; R1 ce biti operacija, R2 i R3 prvi i drugi operand, R4 rezultat
+                LDR R8, ENDBLOCK
+                MOV SP, #0x10000 ; inicijalizacija stoga
+
+START           LDR R1, [R0], #4 ; ucitaj prvi operator
+                CMP R1, R6 ; ako je operator jednak onome sto oznacava kraj inputa, BEQ na exit koji terminira program
+                BEQ EXIT
+                LDR R2, [R0], #4 ; ucitaj operande
+                LDR R3, [R0], #4
+                CMP R1, #0x0 ; ako je operator zbrajanje, beq na zbrajanje
+                BEQ ZBROJI
+                CMP R1, #0x1 ; ako je operator oduzimanje, beq na oduzimanje
+                BEQ ODUZMI
+                CMP R1, #0x2 ; ako je operator mnozenje, beq na mnozenje
+                BEQ POMNOZI
+                CMP R1, #0x3
+                BEQ DIJELI
+                B START
+               
+ZBROJI          ADD R4, R2, R3
+                B SPREMI
+
+ODUZMI          SUB R4, R2, R3  
+                B SPREMI
+
+POMNOZI         MUL R4, R2, R3
+                B SPREMI
+
+DIJELI          EOR R7, R2, R3 ; bitwise xor, nili na razini bitova -> na najznacajnijem bitu ce biti info o tocnom predznaku nakon dijeljenja
+                ORRS R2, R2, R2
+                RSBMI R2, R2, #0
+                ORRS R3, R3, R3
+                RSBMI R3, R3, #0
+                STMFD SP!,{R2, R3} ; na stog stavi r2 i r3 te pomakne stack pointer
+                SUB SP, SP, #4 ; pomakne stack pointer jos jedno mjesto, ostavljajuci mjesto gdje ce ici rezultat
+                BL FUNCDIV ; poziv funkcije
+                LDMFD SP!, {R4} ; SP je trenutno na rezultatu iz funkcije, loadaj to u R1 i odmah pomakni SP sa ! 
+                ADD SP, SP, #8 ; micanje preostalih parametara (r2 i r3) sa stoga
+                CMP R7, #0 ; ako kontrolni registar za predznak sadrzi negativan broj, oduzmi R1 od 0,
+                RSBMI R4, R4, #0 ; cime postavljamo dobar predznak na rezultat, R1
+                B SPREMI
+                
+
+FUNCDIV         STMFD SP!,{R4, R10, R11, R7}
+                LDR R10, [SP,#20]
+                LDR R11, [SP,#24]
+                CMP R11, #0
+                MOVEQ R4, #0
+                BEQ DONEDIV
+                MOV R4, #0
+LOOP            SUBS R10, R10, R11 ; oduzmi, spremi zastavice, jer ako je br negativan ostao ti je samo ostatak i nisi mogao jos jednom oduzeti cijeli broj
+                CMP R10, #0
+                ADDPL R4, R4, #1 ; ako je (sad smanjeni) djeljenik pozitivan ili nula, mozes rezultat povecati za 1 jer si od njega jos jednom uspjesno oduzeo djelitelj
+                BPL LOOP
+
+DONEDIV         STR R4, [SP,#16]
+                LDMFD SP!,{R4, R10, R11, R7} ; releaseaj ovo sa stoga, obnovi kontekst
+                MOV PC, LR
+                
+SPREMI          STR R4, [R5], #4
+                B START
+
+EXIT            STR R8, [R5]
+                SWI 0x123456
+
+                ORG 0x500
+                DW  0x00000003, 0xFFFFFEFF, 0x00000010, 0x1, 0x000001F4, 0xFFFFFD44, 0x2, 0xFFFFFFFE, 0xA, 0x3, 0xFFFFF000, 0xFFFFFFC0, 0x80808080
+ENDBLOCK        DW  0XFFFFFFFF
+ENDINPUT        DW  0x80808080
+;                                                            -----------STOG--------------
+;                                                          R7 <-----SP
+;                                                          R11 working parametar 1
+;                                                          R10 working parametar 2
+;                                                          R4 bit ce kolicnik
+;                                                          prazno mjesto za vraćanje rezultata < [SP,#12]
+;                                                          R2 (parametar 1)
+;                                                          R3 (parametar 2)
